@@ -56,6 +56,10 @@ The root project controls the generated file path:
 }
 ```
 
+
+Provider packages are topologically ordered so dependencies appear before dependants. The collector follows transitive dependencies through packages that expose no provider, which keeps core providers before integration providers such as `componenta/cqrs-app`. Original Composer order is the tie-breaker for unrelated packages.
+
+Only provider packages participate in cycle validation. Third-party dependency cycles that cannot affect provider order are ignored; a cycle between provider packages and duplicate package records are rejected. Repeated provider class names are emitted once at their first ordered position.
 If no path is configured, the plugin uses `config/componenta-providers.php`.
 
 ## Runtime Behavior

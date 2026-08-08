@@ -75,6 +75,7 @@ final class ComponentaPlugin implements PluginInterface, EventSubscriberInterfac
             static fn(PackageInterface $package): ProviderPackage => new ProviderPackage(
                 name: $package->getName(),
                 extra: $package->getExtra(),
+                requires: array_keys($package->getRequires()),
             ),
             $packages,
         ));

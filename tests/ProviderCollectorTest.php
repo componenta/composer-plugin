@@ -35,6 +35,87 @@ it('collects componenta config providers from package extra metadata', function 
     ]);
 });
 
+it('orders package providers after the providers of their dependencies', function (): void {
+    $providers = (new ProviderCollector())->collect([
+        new ProviderPackage(
+            'componenta/skeleton',
+            ['componenta' => ['config-providers' => ['App\\ConfigProvider']]],
+            ['componenta/cqrs-app', 'componenta/unrelated'],
+        ),
+        new ProviderPackage(
+            'componenta/cqrs-app',
+            ['componenta' => ['config-providers' => ['Componenta\\CQRS\\App\\ConfigProvider']]],
+            ['componenta/cqrs'],
+        ),
+        new ProviderPackage(
+            'componenta/unrelated',
+            ['componenta' => ['config-providers' => ['Componenta\\Unrelated\\ConfigProvider']]],
+        ),
+        new ProviderPackage(
+            'componenta/cqrs',
+            ['componenta' => ['config-providers' => ['Componenta\\CQRS\\ConfigProvider']]],
+        ),
+    ]);
+
+    expect($providers)->toBe([
+        'Componenta\\CQRS\\ConfigProvider',
+        'Componenta\\CQRS\\App\\ConfigProvider',
+        'Componenta\\Unrelated\\ConfigProvider',
+        'App\\ConfigProvider',
+    ]);
+});
+
+it('orders providers across transitive non-provider dependencies', function (): void {
+    $providers = (new ProviderCollector())->collect([
+        new ProviderPackage(
+            'componenta/app',
+            ['componenta' => ['config-providers' => ['Componenta\App\ConfigProvider']]],
+            ['vendor/bridge'],
+        ),
+        new ProviderPackage('vendor/bridge', [], ['componenta/config']),
+        new ProviderPackage(
+            'componenta/config',
+            ['componenta' => ['config-providers' => ['Componenta\Config\ConfigProvider']]],
+        ),
+    ]);
+
+    expect($providers)->toBe([
+        'Componenta\Config\ConfigProvider',
+        'Componenta\App\ConfigProvider',
+    ]);
+});
+
+it('ignores circular dependencies outside provider packages', function (): void {
+    $providers = (new ProviderCollector())->collect([
+        new ProviderPackage(
+            'componenta/app',
+            ['componenta' => ['config-providers' => ['Componenta\App\ConfigProvider']]],
+            ['spiral/core'],
+        ),
+        new ProviderPackage('spiral/core', [], ['spiral/interceptors']),
+        new ProviderPackage('spiral/interceptors', [], ['spiral/core']),
+    ]);
+
+    expect($providers)->toBe([
+        'Componenta\App\ConfigProvider',
+    ]);
+});
+
+it('rejects circular package ordering metadata', function (): void {
+    expect(fn() => (new ProviderCollector())->collect([
+        new ProviderPackage(
+            'componenta/one',
+            ['componenta' => ['config-providers' => ['Componenta\One\ConfigProvider']]],
+            ['componenta/two'],
+        ),
+        new ProviderPackage(
+            'componenta/two',
+            ['componenta' => ['config-providers' => ['Componenta\Two\ConfigProvider']]],
+            ['componenta/one'],
+        ),
+    ]))->toThrow(UnexpectedValueException::class, 'Circular Composer dependency');
+});
+
 it('rejects invalid provider metadata', function (): void {
     expect(fn() => (new ProviderCollector())->collect([
         new ProviderPackage('componenta/broken', [
@@ -51,7 +132,7 @@ it('renders provider file content', function (): void {
         'Componenta\\Two\\ConfigProvider',
     ]);
 
-    expect($contents)->toBe(<<<'PHP'
+    $expected = str_replace("\r\n", "\n", <<<'PHP'
 <?php
 
 declare(strict_types=1);
@@ -62,6 +143,8 @@ return [
 ];
 
 PHP);
+
+    expect($contents)->toBe($expected);
 });
 
 it('does not rewrite unchanged provider file', function (): void {
