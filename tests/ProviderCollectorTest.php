@@ -6,6 +6,17 @@ use Componenta\ComposerPlugin\ProviderCollector;
 use Componenta\ComposerPlugin\ProviderFileRenderer;
 use Componenta\ComposerPlugin\ProviderFileWriter;
 use Componenta\ComposerPlugin\ProviderPackage;
+use Componenta\ComposerPlugin\ProviderPackageSorter;
+
+/**
+ * @param list<ProviderPackage> $packages
+ * @param array<string, list<string>> $requires
+ * @return list<class-string>
+ */
+function collectSortedProviders(array $packages, array $requires): array
+{
+    return (new ProviderCollector())->collect((new ProviderPackageSorter())->sort($packages, $requires));
+}
 
 it('collects componenta config providers from package extra metadata', function (): void {
     $providers = (new ProviderCollector())->collect([
@@ -36,16 +47,14 @@ it('collects componenta config providers from package extra metadata', function 
 });
 
 it('orders package providers after the providers of their dependencies', function (): void {
-    $providers = (new ProviderCollector())->collect([
+    $providers = collectSortedProviders([
         new ProviderPackage(
             'componenta/skeleton',
             ['componenta' => ['config-providers' => ['App\\ConfigProvider']]],
-            ['componenta/cqrs-app', 'componenta/unrelated'],
         ),
         new ProviderPackage(
             'componenta/cqrs-app',
             ['componenta' => ['config-providers' => ['Componenta\\CQRS\\App\\ConfigProvider']]],
-            ['componenta/cqrs'],
         ),
         new ProviderPackage(
             'componenta/unrelated',
@@ -55,6 +64,9 @@ it('orders package providers after the providers of their dependencies', functio
             'componenta/cqrs',
             ['componenta' => ['config-providers' => ['Componenta\\CQRS\\ConfigProvider']]],
         ),
+    ], [
+        'componenta/skeleton' => ['componenta/cqrs-app', 'componenta/unrelated'],
+        'componenta/cqrs-app' => ['componenta/cqrs'],
     ]);
 
     expect($providers)->toBe([
@@ -66,17 +78,19 @@ it('orders package providers after the providers of their dependencies', functio
 });
 
 it('orders providers across transitive non-provider dependencies', function (): void {
-    $providers = (new ProviderCollector())->collect([
+    $providers = collectSortedProviders([
         new ProviderPackage(
             'componenta/app',
             ['componenta' => ['config-providers' => ['Componenta\App\ConfigProvider']]],
-            ['vendor/bridge'],
         ),
-        new ProviderPackage('vendor/bridge', [], ['componenta/config']),
+        new ProviderPackage('vendor/bridge', []),
         new ProviderPackage(
             'componenta/config',
             ['componenta' => ['config-providers' => ['Componenta\Config\ConfigProvider']]],
         ),
+    ], [
+        'componenta/app' => ['vendor/bridge'],
+        'vendor/bridge' => ['componenta/config'],
     ]);
 
     expect($providers)->toBe([
@@ -86,14 +100,17 @@ it('orders providers across transitive non-provider dependencies', function (): 
 });
 
 it('ignores circular dependencies outside provider packages', function (): void {
-    $providers = (new ProviderCollector())->collect([
+    $providers = collectSortedProviders([
         new ProviderPackage(
             'componenta/app',
             ['componenta' => ['config-providers' => ['Componenta\App\ConfigProvider']]],
-            ['spiral/core'],
         ),
-        new ProviderPackage('spiral/core', [], ['spiral/interceptors']),
-        new ProviderPackage('spiral/interceptors', [], ['spiral/core']),
+        new ProviderPackage('spiral/core', []),
+        new ProviderPackage('spiral/interceptors', []),
+    ], [
+        'componenta/app' => ['spiral/core'],
+        'spiral/core' => ['spiral/interceptors'],
+        'spiral/interceptors' => ['spiral/core'],
     ]);
 
     expect($providers)->toBe([
@@ -102,18 +119,25 @@ it('ignores circular dependencies outside provider packages', function (): void 
 });
 
 it('rejects circular package ordering metadata', function (): void {
-    expect(fn() => (new ProviderCollector())->collect([
+    expect(fn() => collectSortedProviders([
         new ProviderPackage(
             'componenta/one',
             ['componenta' => ['config-providers' => ['Componenta\One\ConfigProvider']]],
-            ['componenta/two'],
         ),
         new ProviderPackage(
             'componenta/two',
             ['componenta' => ['config-providers' => ['Componenta\Two\ConfigProvider']]],
-            ['componenta/one'],
         ),
+    ], [
+        'componenta/one' => ['componenta/two'],
+        'componenta/two' => ['componenta/one'],
     ]))->toThrow(UnexpectedValueException::class, 'Circular Composer dependency');
+});
+
+it('keeps provider package compatible with an already loaded plugin version', function (): void {
+    $package = new ProviderPackage('componenta/app', []);
+
+    expect(array_keys(get_object_vars($package)))->toBe(['name', 'extra']);
 });
 
 it('rejects invalid provider metadata', function (): void {

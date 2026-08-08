@@ -71,14 +71,21 @@ final class ComponentaPlugin implements PluginInterface, EventSubscriberInterfac
             $packages[] = $package;
         }
 
-        return $collector->collect(array_map(
-            static fn(PackageInterface $package): ProviderPackage => new ProviderPackage(
-                name: $package->getName(),
-                extra: $package->getExtra(),
-                requires: array_keys($package->getRequires()),
-            ),
+        $requires = [];
+        $providerPackages = array_map(
+            static function (PackageInterface $package) use (&$requires): ProviderPackage {
+                $name = $package->getName();
+                $requires[$name] = array_keys($package->getRequires());
+
+                return new ProviderPackage(
+                    name: $name,
+                    extra: $package->getExtra(),
+                );
+            },
             $packages,
-        ));
+        );
+
+        return $collector->collect((new ProviderPackageSorter())->sort($providerPackages, $requires));
     }
 
     private function providerFilePath(): string
