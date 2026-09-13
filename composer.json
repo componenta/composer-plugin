@@ -8,7 +8,8 @@
         "composer-plugin-api": "^2.6"
     },
     "require-dev": {
-        "pestphp/pest": "^4.0"
+        "pestphp/pest": "^4.0",
+        "composer/composer": "^2.6"
     },
     "autoload": {
         "psr-4": {
@@ -21,7 +22,10 @@
         }
     },
     "extra": {
-        "class": "Componenta\\ComposerPlugin\\ComponentaPlugin"
+        "class": "Componenta\\ComposerPlugin\\ComponentaPlugin",
+        "branch-alias": {
+            "dev-main": "1.0.x-dev"
+        }
     },
     "config": {
         "allow-plugins": {

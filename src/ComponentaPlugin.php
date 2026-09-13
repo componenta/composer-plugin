@@ -8,6 +8,7 @@ use Composer\Composer;
 use Composer\EventDispatcher\EventSubscriberInterface;
 use Composer\Factory;
 use Composer\IO\IOInterface;
+use Composer\Package\AliasPackage;
 use Composer\Package\PackageInterface;
 use Composer\Plugin\PluginInterface;
 use Composer\Script\ScriptEvents;
@@ -68,7 +69,9 @@ final class ComponentaPlugin implements PluginInterface, EventSubscriberInterfac
         $packages = [$this->composer->getPackage()];
 
         foreach ($this->composer->getRepositoryManager()->getLocalRepository()->getPackages() as $package) {
-            $packages[] = $package;
+            if (!$package instanceof AliasPackage) {
+                $packages[] = $package;
+            }
         }
 
         $requires = [];
