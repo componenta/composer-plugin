@@ -89,14 +89,17 @@ it('orders compatible replacers and virtual providers before dependent packages'
 
 it('resolves dependency constraints against Composer version aliases', function (): void {
     $composer = graphComposer($this->directory, ['componenta' => ['config-providers-file' => $this->file]]);
-    $feature = graphPackage('example/feature', 'Example\\Feature');
-    $feature->setRequires(['example/dependency' => graphLink('example/feature', 'example/dependency', '^2.0@dev')]);
-    $dependency = graphPackage('example/dependency', 'Example\\Dependency', 'dev-main');
+    $feature = graphPackage('example/a-feature', 'Example\\Feature');
+    $feature->setRequires(['example/z-dependency' => graphLink('example/a-feature', 'example/z-dependency', '^2.0@dev')]);
+    $dependency = graphPackage('example/z-dependency', 'Example\\Dependency', 'dev-main');
     $repository = $composer->getRepositoryManager()->getLocalRepository();
     $repository->addPackage($feature);
     $repository->addPackage($dependency);
-    $repository->addPackage(new AliasPackage($dependency, '2.0.9999999.9999999-dev', '2.0.x-dev'));
 
+    runProviderGraph($composer, true);
+    expect(require $this->file)->toBe(['Example\\Feature', 'Example\\Dependency']);
+
+    $repository->addPackage(new AliasPackage($dependency, '2.0.9999999.9999999-dev', '2.0.x-dev'));
     runProviderGraph($composer, true);
     expect(require $this->file)->toBe(['Example\\Dependency', 'Example\\Feature']);
 });
@@ -164,16 +167,19 @@ it('rejects an explicitly null output path without creating a file', function ()
 
 it('resolves self.version requirements rewritten by the dependent package alias', function (): void {
     $composer = graphComposer($this->directory, ['componenta' => ['config-providers-file' => $this->file]]);
-    $feature = graphPackage('example/feature', 'Example\\Feature', 'dev-main');
-    $feature->setRequires(['example/dependency' => new Link(
-        'example/feature', 'example/dependency', new Constraint('==', 'dev-main'), 'requires', 'self.version',
+    $feature = graphPackage('example/a-feature', 'Example\\Feature', 'dev-main');
+    $feature->setRequires(['example/z-dependency' => new Link(
+        'example/a-feature', 'example/z-dependency', new Constraint('==', 'dev-main'), 'requires', 'self.version',
     )]);
-    $dependency = graphPackage('example/dependency', 'Example\\Dependency', '2.0.9999999.9999999-dev');
+    $dependency = graphPackage('example/z-dependency', 'Example\\Dependency', '2.0.9999999.9999999-dev');
     $repository = $composer->getRepositoryManager()->getLocalRepository();
     $repository->addPackage($feature);
-    $repository->addPackage(new AliasPackage($feature, '2.0.9999999.9999999-dev', '2.0.x-dev'));
     $repository->addPackage($dependency);
 
+    runProviderGraph($composer, true);
+    expect(require $this->file)->toBe(['Example\\Feature', 'Example\\Dependency']);
+
+    $repository->addPackage(new AliasPackage($feature, '2.0.9999999.9999999-dev', '2.0.x-dev'));
     runProviderGraph($composer, true);
     expect(require $this->file)->toBe(['Example\\Dependency', 'Example\\Feature']);
 });
