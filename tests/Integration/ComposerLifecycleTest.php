@@ -37,6 +37,14 @@ function lifecycleCommand(string $composer, string $directory, string $home, arr
             'COMPOSER' => false,
             'COMPOSER_HOME' => $home,
             'COMPOSER_ROOT_VERSION' => false,
+            'COMPOSER_VENDOR_DIR' => false,
+            'COMPOSER_BIN_DIR' => false,
+            'COMPOSER_CACHE_DIR' => $home . '/cache',
+            'COMPOSER_NO_DEV' => false,
+            'COMPOSER_SKIP_SCRIPTS' => false,
+            'COMPOSER_NO_AUDIT' => '1',
+            'COMPOSER_IGNORE_PLATFORM_REQ' => false,
+            'COMPOSER_IGNORE_PLATFORM_REQS' => false,
             'COMPOSER_ALLOW_SUPERUSER' => '1',
             'COMPOSER_DISABLE_NETWORK' => '1',
             'COMPOSER_NO_INTERACTION' => '1',
@@ -61,8 +69,8 @@ it('generates manifests across real Composer installation, upgrade from v1.0.3, 
 
     try {
         $legacy = $repository . '/tests/Fixtures/composer-plugin-1.0.3';
-        foreach (glob($legacy . '/src/*.php') ?: [] as $file) {
-            copy($file, $plugin . '/src/' . basename($file));
+        foreach (glob($legacy . '/src/*.php.txt') ?: [] as $file) {
+            copy($file, $plugin . '/src/' . basename($file, '.txt'));
         }
         $legacyConfig = json_decode(file_get_contents($legacy . '/composer.json'), true, flags: JSON_THROW_ON_ERROR);
         $legacyConfig['version'] = '1.0.3';
@@ -95,12 +103,20 @@ it('generates manifests across real Composer installation, upgrade from v1.0.3, 
             clearstatcache(true, $file);
             return require $file;
         };
+        $checkAutoload = static function (bool $dev) use ($project, $file): void {
+            $code = 'require ' . var_export($project . '/vendor/autoload.php', true) . ';'
+                . '$classes = require ' . var_export($file, true) . ';'
+                . 'foreach ($classes as $class) { if (!class_exists($class)) { exit(1); } }'
+                . 'exit(class_exists("Example\\\\DevelopmentProvider") === ' . ($dev ? 'true' : 'false') . ' ? 0 : 2);';
+            (new Process([PHP_BINARY, '-r', $code], $project))->mustRun();
+        };
 
         lifecycleCommand($composer, $project, $home, ['install']);
         $both = ['Example\\DevelopmentProvider', 'Example\\RuntimeProvider'];
         $actual = $read();
         sort($actual);
         expect($actual)->toBe($both);
+        $checkAutoload(true);
 
         // Prove that the new entry point was actually loaded when Composer updates
         // from the previous published version, not merely that the lock changed.
@@ -124,11 +140,13 @@ it('generates manifests across real Composer installation, upgrade from v1.0.3, 
 
         lifecycleCommand($composer, $project, $home, ['dump-autoload', '--no-dev']);
         expect($read())->toBe(['Example\\RuntimeProvider']);
+        $checkAutoload(false);
 
         lifecycleCommand($composer, $project, $home, ['dump-autoload', '--dev']);
         $actual = $read();
         sort($actual);
         expect($actual)->toBe($both);
+        $checkAutoload(true);
 
         // Non-installing commands must not change a dev manifest even with --no-dev.
         touch($file, time() - 100);
