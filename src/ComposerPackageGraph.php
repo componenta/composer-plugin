@@ -128,14 +128,9 @@ final readonly class ComposerPackageGraph
     private function installedAliases(Composer $composer, array $packages, array $known): array
     {
         $file = $composer->getConfig()->get('vendor-dir') . '/composer/installed.php';
-        if (!is_file($file)) {
+        $records = new InstalledMetadataReader()->versions($file);
+        if ($records === []) {
             return [];
-        }
-
-        // This is Composer's own generated runtime metadata, not a package provider.
-        $data = (static fn(string $path): mixed => require $path)($file);
-        if (!is_array($data) || !is_array($data['versions'] ?? null)) {
-            throw new UnexpectedValueException('Invalid Composer installed.php metadata.');
         }
 
         $parser = new VersionParser();
@@ -146,7 +141,7 @@ final readonly class ComposerPackageGraph
                 continue;
             }
 
-            $record = $data['versions'][$name] ?? null;
+            $record = $records[$name] ?? null;
             if (!is_array($record) || ($record['version'] ?? null) !== $package->getVersion()) {
                 continue;
             }

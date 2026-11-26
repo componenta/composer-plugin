@@ -351,3 +351,30 @@ it('still orders an explicitly required polyfill package before its dependant', 
     runProviderGraph($composer, true);
     expect(require $this->file)->toBe(['Example\\Polyfill', 'Example\\Feature']);
 });
+
+it('rejects executable installed metadata without modifying an existing provider file', function (): void {
+    $composer = graphComposer($this->directory, ['componenta' => ['config-providers-file' => $this->file]]);
+    $repository = $composer->getRepositoryManager()->getLocalRepository();
+    $repository->addPackage(graphPackage('example/package', 'Example\\Provider'));
+    runProviderGraph($composer, true);
+    $previous = file_get_contents($this->file);
+    $vendor = $this->directory . '/vendor/composer';
+    mkdir($vendor, 0775, true);
+    $installed = $vendor . '/installed.php';
+    $marker = $this->directory . '/executed';
+
+    try {
+        file_put_contents($installed, '<?php file_put_contents(' . var_export($marker, true)
+            . ", 'executed'); return array('versions' => array());");
+        expect(fn() => runProviderGraph($composer, true))->toThrow(UnexpectedValueException::class);
+        expect(file_exists($marker))->toBeFalse()
+            ->and(file_get_contents($this->file))->toBe($previous);
+    } finally {
+        if (is_file($marker)) {
+            unlink($marker);
+        }
+        unlink($installed);
+        rmdir($vendor);
+        rmdir(dirname($vendor));
+    }
+});
