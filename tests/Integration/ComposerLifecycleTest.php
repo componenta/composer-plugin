@@ -191,3 +191,73 @@ it('generates manifests across real Composer installation, upgrade from v1.0.3, 
         lifecycleRemoveTree($directory);
     }
 });
+
+it('preserves inline alias provider ordering between install and a separate dump-autoload command', function (): void {
+    $repository = dirname(__DIR__, 2);
+    $composer = $repository . '/vendor/bin/composer';
+    $directory = sys_get_temp_dir() . '/componenta-inline-alias-' . bin2hex(random_bytes(8));
+    $project = $directory . '/project';
+    $home = $directory . '/home';
+    $packages = $directory . '/packages';
+    $plugin = $packages . '/plugin';
+    mkdir($project, 0775, true);
+    mkdir($home, 0775, true);
+    mkdir($plugin . '/src', 0775, true);
+
+    try {
+        foreach (glob($repository . '/src/*.php') ?: [] as $source) {
+            copy($source, $plugin . '/src/' . basename($source));
+        }
+        $config = json_decode(file_get_contents($repository . '/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+        unset($config['require-dev'], $config['autoload-dev'], $config['scripts'], $config['config'], $config['extra']['branch-alias']);
+        $config['version'] = '2.0.0';
+        lifecycleJson($plugin . '/composer.json', $config);
+
+        $dependency = $packages . '/dependency';
+        $feature = $packages . '/feature';
+        mkdir($dependency);
+        mkdir($feature);
+        lifecycleJson($dependency . '/composer.json', [
+            'name' => 'example/z-dependency',
+            'version' => 'dev-main',
+            'extra' => ['componenta' => ['config-providers' => ['Example\\DependencyProvider']]],
+        ]);
+        lifecycleJson($feature . '/composer.json', [
+            'name' => 'example/a-feature',
+            'version' => '1.0.0',
+            'require' => ['example/z-dependency' => '^2.0'],
+            'extra' => ['componenta' => ['config-providers' => ['Example\\FeatureProvider']]],
+        ]);
+        lifecycleJson($project . '/composer.json', [
+            'name' => 'example/application',
+            'require' => [
+                'componenta/composer-plugin' => '^2.0',
+                'example/a-feature' => '^1.0',
+                'example/z-dependency' => 'dev-main as 2.0.x-dev',
+            ],
+            'repositories' => [
+                ['packagist.org' => false],
+                ['type' => 'path', 'url' => $packages . '/*', 'options' => ['symlink' => false]],
+            ],
+            'config' => ['allow-plugins' => ['componenta/composer-plugin' => true]],
+        ]);
+
+        lifecycleCommand($composer, $project, $home, ['install']);
+        $file = $project . '/config/componenta-providers.php';
+        expect(require $file)->toBe(['Example\\DependencyProvider', 'Example\\FeatureProvider']);
+        $installed = require $project . '/vendor/composer/installed.php';
+        expect($installed['versions']['example/z-dependency']['aliases'])->toContain('2.0.x-dev');
+        $contents = file_get_contents($file);
+        touch($file, time() - 100);
+        clearstatcache(true, $file);
+        $mtime = filemtime($file);
+
+        lifecycleCommand($composer, $project, $home, ['dump-autoload']);
+        clearstatcache(true, $file);
+        expect(require $file)->toBe(['Example\\DependencyProvider', 'Example\\FeatureProvider'])
+            ->and(file_get_contents($file))->toBe($contents)
+            ->and(filemtime($file))->toBe($mtime);
+    } finally {
+        lifecycleRemoveTree($directory);
+    }
+});

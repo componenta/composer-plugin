@@ -135,7 +135,7 @@ final readonly class ComposerPackageGraph
         $aliases = [];
         $rootName = $composer->getPackage()->getName();
         foreach ($packages as $name => $package) {
-            if ($name === $rootName || !$package instanceof BasePackage) {
+            if ($name === $rootName || !($package instanceof BasePackage)) {
                 continue;
             }
 
@@ -145,13 +145,20 @@ final readonly class ComposerPackageGraph
             }
 
             $source = $package->getInstallationSource();
-            $reference = $source === 'source' ? $package->getSourceReference() : $package->getDistReference();
+            $reference = $source === null ? null : ($source === 'source'
+                ? $package->getSourceReference()
+                : $package->getDistReference());
             $reference ??= ($package->getSourceReference() ?: $package->getDistReference()) ?: null;
             if (($record['reference'] ?? null) !== $reference) {
                 continue;
             }
 
-            foreach ($record['aliases'] ?? [] as $prettyVersion) {
+            $versions = $record['aliases'] ?? [];
+            if (!is_array($versions) || !array_is_list($versions)) {
+                throw new UnexpectedValueException(sprintf('Invalid Composer aliases for "%s".', $name));
+            }
+
+            foreach ($versions as $prettyVersion) {
                 if (!is_string($prettyVersion)) {
                     throw new UnexpectedValueException(sprintf('Invalid Composer alias for "%s".', $name));
                 }
