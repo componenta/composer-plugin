@@ -47,7 +47,7 @@ function lifecycleCommand(string $composer, string $directory, string $home, arr
     $process->mustRun();
 }
 
-it('generates manifests across real Composer installation, dump-autoload, update and no-dev installation', function (): void {
+it('generates manifests across real Composer installation, upgrade from v1.0.3, dump-autoload and no-dev installation', function (): void {
     $repository = dirname(__DIR__, 2);
     $composer = $repository . '/vendor/bin/composer';
     $directory = sys_get_temp_dir() . '/componenta-lifecycle-' . bin2hex(random_bytes(8));
@@ -60,13 +60,13 @@ it('generates manifests across real Composer installation, dump-autoload, update
     mkdir($plugin . '/src', 0775, true);
 
     try {
-        foreach (glob($repository . '/src/*.php') ?: [] as $file) {
+        $legacy = $repository . '/tests/Fixtures/composer-plugin-1.0.3';
+        foreach (glob($legacy . '/src/*.php') ?: [] as $file) {
             copy($file, $plugin . '/src/' . basename($file));
         }
-        $pluginConfig = json_decode(file_get_contents($repository . '/composer.json'), true, flags: JSON_THROW_ON_ERROR);
-        unset($pluginConfig['require-dev'], $pluginConfig['autoload-dev'], $pluginConfig['scripts'], $pluginConfig['config'], $pluginConfig['extra']['branch-alias']);
-        $pluginConfig['version'] = '2.0.0';
-        lifecycleJson($plugin . '/composer.json', $pluginConfig);
+        $legacyConfig = json_decode(file_get_contents($legacy . '/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+        $legacyConfig['version'] = '1.0.3';
+        lifecycleJson($plugin . '/composer.json', $legacyConfig);
 
         foreach (['runtime' => 'RuntimeProvider', 'development' => 'DevelopmentProvider'] as $name => $class) {
             $path = $packages . '/' . $name;
@@ -82,7 +82,7 @@ it('generates manifests across real Composer installation, dump-autoload, update
 
         lifecycleJson($project . '/composer.json', [
             'name' => 'example/application',
-            'require' => ['componenta/composer-plugin' => '^2.0', 'example/runtime' => '^1.0'],
+            'require' => ['componenta/composer-plugin' => '^1.0 || ^2.0', 'example/runtime' => '^1.0'],
             'require-dev' => ['example/development' => '^1.0'],
             'repositories' => [
                 ['packagist.org' => false],
@@ -101,6 +101,26 @@ it('generates manifests across real Composer installation, dump-autoload, update
         $actual = $read();
         sort($actual);
         expect($actual)->toBe($both);
+
+        // Prove that the new entry point was actually loaded when Composer updates
+        // from the previous published version, not merely that the lock changed.
+        expect(file_get_contents($file))->toContain('::class');
+        foreach (glob($repository . '/src/*.php') ?: [] as $source) {
+            copy($source, $plugin . '/src/' . basename($source));
+        }
+        $pluginConfig = json_decode(file_get_contents($repository . '/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+        unset($pluginConfig['require-dev'], $pluginConfig['autoload-dev'], $pluginConfig['scripts'], $pluginConfig['config'], $pluginConfig['extra']['branch-alias']);
+        $pluginConfig['version'] = '2.0.0';
+        lifecycleJson($plugin . '/composer.json', $pluginConfig);
+
+        lifecycleCommand($composer, $project, $home, ['update', 'componenta/composer-plugin', '--no-audit']);
+        $installed = json_decode(file_get_contents($project . '/vendor/composer/installed.json'), true, flags: JSON_THROW_ON_ERROR);
+        expect(array_column($installed['packages'], 'version', 'name')['componenta/composer-plugin'])->toBe('2.0.0');
+        $actual = $read();
+        sort($actual);
+        expect($actual)->toBe($both)
+            ->and(file_get_contents($file))->not->toContain('::class')
+            ->and(file_get_contents($file))->toContain(var_export('Example\\RuntimeProvider', true));
 
         lifecycleCommand($composer, $project, $home, ['dump-autoload', '--no-dev']);
         expect($read())->toBe(['Example\\RuntimeProvider']);

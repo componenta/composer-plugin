@@ -1,0 +1,36 @@
+{
+    "name": "componenta/composer-plugin",
+    "description": "Composer integration for generated Componenta package config providers",
+    "type": "composer-plugin",
+    "license": "MIT",
+    "require": {
+        "php": "^8.4",
+        "composer-plugin-api": "^2.6"
+    },
+    "require-dev": {
+        "pestphp/pest": "^4.0",
+        "composer/composer": "^2.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "Componenta\\ComposerPlugin\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Componenta\\ComposerPlugin\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "class": "Componenta\\ComposerPlugin\\ComponentaPlugin",
+        "branch-alias": {
+            "dev-main": "1.0.x-dev"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "stable"
+}

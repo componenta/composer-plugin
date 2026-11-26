@@ -105,6 +105,6 @@ composer test
 composer test:integration
 ```
 
-The integration test executes Composer in a temporary project with local path repositories, exercising installation, autoload mode changes, plugin update and installation without regenerating the autoloader. It does not require external package downloads after development dependencies have been installed.
+The integration test executes Composer in a temporary project with local path repositories, exercising installation, autoload mode changes, migration from v1.0.3, plugin update and installation without regenerating the autoloader. It does not require external package downloads after development dependencies have been installed.
 
 Related packages: [Componenta App](https://github.com/componenta/app), [Componenta Config](https://github.com/componenta/config), [Componenta Skeleton](https://github.com/componenta/skeleton).
