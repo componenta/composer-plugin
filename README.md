@@ -4,7 +4,7 @@ Generates a PHP file containing the ordered list of configuration provider class
 
 ## Installation
 
-Install the plugin in the application, not in reusable libraries:
+Install the plugin as a production requirement of the application, not as a development-only dependency or in reusable libraries:
 
 ```bash
 composer require componenta/composer-plugin
@@ -79,7 +79,7 @@ Application code consumes the returned list; in Componenta App this is the respo
 
 Generation runs on `post-autoload-dump`, `post-install-cmd` and `post-update-cmd`. It uses installed packages rather than the lock file alone, and respects the event's dev mode. With `--no-dev`, installed dev-only packages are excluded in accordance with Composer's dev-package metadata (or Composer's legacy reachability rules when that metadata is empty). Root require-dev links affect ordering only in dev mode.
 
-Both `composer dump-autoload --no-dev` and `composer dump-autoload --dev` refresh the list. Installation or update with `--no-autoloader` still refreshes the list; the application must have a matching autoloader before booting. Commands that disable plugins or scripts may skip generation. Regenerate using `composer dump-autoload` with plugins and scripts enabled before running the application.
+Both `composer dump-autoload --no-dev` and `composer dump-autoload --dev` refresh the list. Installation or update with `--no-autoloader` still refreshes the list; the application must have a matching autoloader before booting. Lock-only updates and download-only installs leave the existing manifest intact. Commands that disable plugins or scripts may skip generation. Regenerate using `composer dump-autoload` with plugins and scripts enabled before running the application.
 
 Unchanged content is not rewritten. Changed content is written completely to a temporary file in the destination directory and replaced with a rename. Existing permission bits are retained; a new file uses 0666 masked by the process umask. Ownership and extended ACLs are not promised. Symbolic links and non-regular destination files are rejected. OPcache invalidation is attempted only for the current PHP environment; worker processes may need restarting.
 

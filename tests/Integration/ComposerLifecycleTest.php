@@ -110,6 +110,22 @@ it('generates manifests across real Composer installation, dump-autoload, update
         sort($actual);
         expect($actual)->toBe($both);
 
+        // Non-installing commands must not change a dev manifest even with --no-dev.
+        touch($file, time() - 100);
+        clearstatcache(true, $file);
+        $mtime = filemtime($file);
+        $contents = file_get_contents($file);
+
+        lifecycleCommand($composer, $project, $home, ['update', '--no-install', '--no-dev', '--no-audit']);
+        clearstatcache(true, $file);
+        expect(file_get_contents($file))->toBe($contents)
+            ->and(filemtime($file))->toBe($mtime);
+
+        lifecycleCommand($composer, $project, $home, ['install', '--download-only', '--no-dev']);
+        clearstatcache(true, $file);
+        expect(file_get_contents($file))->toBe($contents)
+            ->and(filemtime($file))->toBe($mtime);
+
         // Composer must reload the plugin entry point in the update process.
         $pluginConfig['version'] = '2.0.1';
         lifecycleJson($plugin . '/composer.json', $pluginConfig);

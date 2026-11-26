@@ -8,6 +8,8 @@ use Composer\Composer;
 use Composer\EventDispatcher\EventSubscriberInterface;
 use Composer\Factory;
 use Composer\IO\IOInterface;
+use Composer\Plugin\CommandEvent;
+use Composer\Plugin\PluginEvents;
 use Composer\Plugin\PluginInterface;
 use Composer\Script\Event;
 use Composer\Script\ScriptEvents;
@@ -22,12 +24,14 @@ final class ComponentaPlugin implements PluginInterface, EventSubscriberInterfac
     private Composer $composer;
     private IOInterface $io;
     private string $projectRoot;
+    private bool $skipInstallEvents = false;
 
     public function activate(Composer $composer, IOInterface $io): void
     {
         $this->composer = $composer;
         $this->io = $io;
         $this->projectRoot = $this->resolveProjectRoot($composer);
+        $this->skipInstallEvents = false;
     }
 
     public function deactivate(Composer $composer, IOInterface $io): void {}
@@ -41,14 +45,30 @@ final class ComponentaPlugin implements PluginInterface, EventSubscriberInterfac
     public static function getSubscribedEvents(): array
     {
         return [
+            PluginEvents::COMMAND => 'onCommand',
             ScriptEvents::POST_AUTOLOAD_DUMP => 'generateProviders',
             ScriptEvents::POST_INSTALL_CMD => 'generateProviders',
             ScriptEvents::POST_UPDATE_CMD => 'generateProviders',
         ];
     }
 
+    public function onCommand(CommandEvent $event): void
+    {
+        $input = $event->getInput();
+        // These modes can dispatch final script events without installing packages
+        // or dumping the autoloader. Leave the existing manifest intact.
+        $this->skipInstallEvents =
+            ($input->hasOption('no-install') && $input->getOption('no-install') === true)
+            || ($input->hasOption('download-only') && $input->getOption('download-only') === true);
+    }
+
     public function generateProviders(mixed $event = null): void
     {
+        if ($this->skipInstallEvents && $event instanceof Event
+            && in_array($event->getName(), [ScriptEvents::POST_INSTALL_CMD, ScriptEvents::POST_UPDATE_CMD], true)) {
+            return;
+        }
+
         try {
             if (!$this->isEnabledForProject()) {
                 return;
