@@ -162,8 +162,8 @@ it('renders provider file content', function (): void {
 declare(strict_types=1);
 
 return [
-    Componenta\One\ConfigProvider::class,
-    Componenta\Two\ConfigProvider::class,
+    'Componenta\\One\\ConfigProvider',
+    'Componenta\\Two\\ConfigProvider',
 ];
 
 PHP);

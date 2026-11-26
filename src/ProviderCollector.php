@@ -17,7 +17,7 @@ final readonly class ProviderCollector
 
         foreach ($packages as $package) {
             foreach ($extractor->extract($package) as $provider) {
-                $providers[$provider] = $provider;
+                $providers[strtolower($provider)] ??= $provider;
             }
         }
 

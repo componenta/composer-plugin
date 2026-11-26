@@ -11,10 +11,18 @@ final readonly class ProviderFileRenderer
      */
     public function render(array $providers): string
     {
+        if (!array_is_list($providers)) {
+            throw new \UnexpectedValueException('Expected a list of provider class names.');
+        }
+
         $contents = "<?php\n\ndeclare(strict_types=1);\n\nreturn [\n";
 
         foreach ($providers as $provider) {
-            $contents .= '    ' . $provider . "::class,\n";
+            if (!is_string($provider) || !ProviderClassName::isValid($provider)) {
+                throw new \UnexpectedValueException('Invalid Componenta config provider.');
+            }
+
+            $contents .= '    ' . var_export($provider, true) . ",\n";
         }
 
         return $contents . "];\n";

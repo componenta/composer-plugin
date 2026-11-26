@@ -16,11 +16,11 @@ final readonly class ProviderExtractor
      */
     public function extract(ProviderPackage $package): array
     {
-        $componenta = $package->extra[self::EXTRA_KEY] ?? null;
-
-        if ($componenta === null) {
+        if (!array_key_exists(self::EXTRA_KEY, $package->extra)) {
             return [];
         }
+
+        $componenta = $package->extra[self::EXTRA_KEY];
 
         if (!is_array($componenta)) {
             throw new UnexpectedValueException(sprintf(
@@ -29,7 +29,9 @@ final readonly class ProviderExtractor
             ));
         }
 
-        $providers = $componenta[self::PROVIDERS_KEY] ?? [];
+        $providers = array_key_exists(self::PROVIDERS_KEY, $componenta)
+            ? $componenta[self::PROVIDERS_KEY]
+            : [];
 
         if (!is_array($providers) || !array_is_list($providers)) {
             throw new UnexpectedValueException(sprintf(
@@ -39,7 +41,7 @@ final readonly class ProviderExtractor
         }
 
         foreach ($providers as $provider) {
-            if (!is_string($provider) || !$this->isClassString($provider)) {
+            if (!is_string($provider) || !ProviderClassName::isValid($provider)) {
                 throw new UnexpectedValueException(sprintf(
                     'Package "%s" contains invalid Componenta config provider.',
                     $package->name,
@@ -51,8 +53,4 @@ final readonly class ProviderExtractor
         return $providers;
     }
 
-    private function isClassString(string $class): bool
-    {
-        return preg_match('/^[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*$/', $class) === 1;
-    }
 }
