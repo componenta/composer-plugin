@@ -22,7 +22,7 @@ final readonly class ProviderExtractor
 
         $componenta = $package->extra[self::EXTRA_KEY];
 
-        if (!is_array($componenta)) {
+        if (!is_array($componenta) || ($componenta !== [] && array_is_list($componenta))) {
             throw new UnexpectedValueException(sprintf(
                 'Package "%s" extra.componenta must be an object.',
                 $package->name,

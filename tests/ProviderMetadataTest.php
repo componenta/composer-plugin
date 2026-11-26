@@ -29,6 +29,7 @@ it('rejects explicit null and non-list metadata', function (array $extra): void 
 })->with([
     [['componenta' => null]],
     [['componenta' => false]],
+    [['componenta' => ['unexpected list']]],
     [['componenta' => ['config-providers' => null]]],
     [['componenta' => ['config-providers' => ['key' => 'Example\\Provider']]]],
     [['componenta' => ['config-providers' => [42]]]],

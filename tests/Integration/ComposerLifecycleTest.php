@@ -31,7 +31,7 @@ function lifecycleRemoveTree(string $directory): void
 function lifecycleCommand(string $composer, string $directory, string $home, array $arguments): void
 {
     $process = new Process(
-        [PHP_BINARY, $composer, ...$arguments, '--no-interaction', '--no-progress'],
+        [PHP_BINARY, $composer, ...$arguments, '--no-interaction'],
         $directory,
         [
             'COMPOSER' => false,

@@ -100,7 +100,8 @@ final class ComponentaPlugin implements PluginInterface, EventSubscriberInterfac
     {
         $extra = $this->composer->getPackage()->getExtra();
         $componenta = $extra['componenta'] ?? [];
-        if (array_key_exists('componenta', $extra) && !is_array($extra['componenta'])) {
+        if (array_key_exists('componenta', $extra)
+            && (!is_array($extra['componenta']) || ($componenta !== [] && array_is_list($componenta)))) {
             throw new UnexpectedValueException('Root extra.componenta must be an object.');
         }
         $file = array_key_exists('config-providers-file', $componenta)
