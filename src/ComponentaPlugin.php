@@ -8,28 +8,35 @@ use Composer\Composer;
 use Composer\EventDispatcher\EventSubscriberInterface;
 use Composer\Factory;
 use Composer\IO\IOInterface;
-use Composer\Package\AliasPackage;
-use Composer\Package\PackageInterface;
 use Composer\Plugin\PluginInterface;
+use Composer\Script\Event;
 use Composer\Script\ScriptEvents;
 use Throwable;
+use UnexpectedValueException;
 
 final class ComponentaPlugin implements PluginInterface, EventSubscriberInterface
 {
     private const string DEFAULT_PROVIDER_FILE = 'config/componenta-providers.php';
+    private const string PACKAGE_NAME = 'componenta/composer-plugin';
 
     private Composer $composer;
     private IOInterface $io;
+    private string $projectRoot;
 
     public function activate(Composer $composer, IOInterface $io): void
     {
         $this->composer = $composer;
         $this->io = $io;
+        $this->projectRoot = $this->resolveProjectRoot($composer);
     }
 
     public function deactivate(Composer $composer, IOInterface $io): void {}
 
-    public function uninstall(Composer $composer, IOInterface $io): void {}
+    public function uninstall(Composer $composer, IOInterface $io): void
+    {
+        // The path is user-controlled. Never delete a potentially user-owned file.
+        $io->writeError('<comment>Componenta provider manifest is not removed automatically. Remove it when no longer used by the application.</comment>');
+    }
 
     public static function getSubscribedEvents(): array
     {
@@ -43,7 +50,14 @@ final class ComponentaPlugin implements PluginInterface, EventSubscriberInterfac
     public function generateProviders(mixed $event = null): void
     {
         try {
-            $providers = $this->collectProviders();
+            if (!$this->isEnabledForProject()) {
+                return;
+            }
+
+            // Composer passes the autoload/install mode in Script\Event.
+            // Manual calls without an event retain the installed-set behavior.
+            $devMode = !$event instanceof Event || $event->isDevMode();
+            $providers = new ComposerPackageGraph()->collect($this->composer, $devMode);
             $target = $this->providerFilePath();
             $written = new ProviderFileWriter()->write($target, $providers);
 
@@ -60,56 +74,61 @@ final class ComponentaPlugin implements PluginInterface, EventSubscriberInterfac
         }
     }
 
-    /**
-     * @return list<class-string>
-     */
-    private function collectProviders(): array
+    private function isEnabledForProject(): bool
     {
-        $collector = new ProviderCollector();
-        $packages = [$this->composer->getPackage()];
+        $root = $this->composer->getPackage();
+        $componenta = $root->getExtra()['componenta'] ?? null;
+        if (is_array($componenta) && array_key_exists('config-providers-file', $componenta)) {
+            return true;
+        }
 
-        foreach ($this->composer->getRepositoryManager()->getLocalRepository()->getPackages() as $package) {
-            if (!$package instanceof AliasPackage) {
-                $packages[] = $package;
+        if (isset($root->getRequires()[self::PACKAGE_NAME]) || isset($root->getDevRequires()[self::PACKAGE_NAME])) {
+            return true;
+        }
+
+        foreach ($this->composer->getRepositoryManager()->getLocalRepository()->getCanonicalPackages() as $package) {
+            if ($package->getName() === self::PACKAGE_NAME) {
+                return true;
             }
         }
 
-        $requires = [];
-        $providerPackages = array_map(
-            static function (PackageInterface $package) use (&$requires): ProviderPackage {
-                $name = $package->getName();
-                $requires[$name] = array_keys($package->getRequires());
-
-                return new ProviderPackage(
-                    name: $name,
-                    extra: $package->getExtra(),
-                );
-            },
-            $packages,
-        );
-
-        return $collector->collect((new ProviderPackageSorter())->sort($providerPackages, $requires));
+        // A globally installed plugin must not create files in unrelated projects.
+        return false;
     }
 
     private function providerFilePath(): string
     {
         $extra = $this->composer->getPackage()->getExtra();
-        $file = $extra['componenta']['config-providers-file'] ?? self::DEFAULT_PROVIDER_FILE;
+        $componenta = $extra['componenta'] ?? [];
+        if (array_key_exists('componenta', $extra) && !is_array($extra['componenta'])) {
+            throw new UnexpectedValueException('Root extra.componenta must be an object.');
+        }
+        $file = array_key_exists('config-providers-file', $componenta)
+            ? $componenta['config-providers-file']
+            : self::DEFAULT_PROVIDER_FILE;
 
-        if (!is_string($file) || trim($file) === '') {
-            throw new \UnexpectedValueException('extra.componenta.config-providers-file must be a non-empty string.');
+        if (!is_string($file) || trim($file) === '' || str_contains($file, "\0")
+            || preg_match('~\A[a-z][a-z0-9+.-]*://~i', $file) === 1) {
+            throw new UnexpectedValueException('extra.componenta.config-providers-file must be a non-empty local path.');
         }
 
         if ($this->isAbsolutePath($file)) {
             return $file;
         }
 
-        return $this->projectRoot() . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $file);
+        return $this->projectRoot . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $file);
     }
 
-    private function projectRoot(): string
+    private function resolveProjectRoot(Composer $composer): string
     {
-        $composerFile = Factory::getComposerFile();
+        $config = $composer->getConfig();
+        $source = $config->getConfigSource()->getName();
+        // Factory uses the global config source when initialized from an array.
+        // For file-backed instances prefer the actual loaded composer.json.
+        $globalConfig = $config->get('home') . '/config.json';
+        $composerFile = $source !== $globalConfig && is_file($source)
+            ? $source
+            : Factory::getComposerFile();
         $root = realpath(dirname($composerFile));
 
         return $root === false ? dirname($composerFile) : $root;
