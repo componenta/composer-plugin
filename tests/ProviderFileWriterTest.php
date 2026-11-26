@@ -79,3 +79,32 @@ it('rejects stream wrappers before any file operation', function (): void {
     expect(fn() => (new ProviderFileWriter())->write('php://memory', []))
         ->toThrow(RuntimeException::class, 'local filesystem path');
 });
+
+it('preserves the previous file when its directory cannot accept a temporary file', function (): void {
+    $file = $this->directory . '/providers.php';
+    file_put_contents($file, 'original');
+    chmod($this->directory, 0500);
+
+    try {
+        clearstatcache(true, $this->directory);
+        if (is_writable($this->directory)) {
+            $this->markTestSkipped('The effective user can write despite the directory permissions.');
+        }
+        expect(fn() => (new ProviderFileWriter())->write($file, ['Example\\Provider']))
+            ->toThrow(RuntimeException::class);
+        expect(file_get_contents($file))->toBe('original')
+            ->and(scandir($this->directory))->toBe(['.', '..', 'providers.php']);
+    } finally {
+        chmod($this->directory, 0700);
+    }
+})->skip(PHP_OS_FAMILY === 'Windows', 'POSIX permission bits');
+
+it('rejects a dangling symbolic link without creating its target', function (): void {
+    $target = $this->directory . '/missing.php';
+    $file = $this->directory . '/providers.php';
+    symlink($target, $file);
+
+    expect(fn() => (new ProviderFileWriter())->write($file, []))->toThrow(RuntimeException::class);
+    expect(is_link($file))->toBeTrue()
+        ->and(file_exists($target))->toBeFalse();
+})->skip(PHP_OS_FAMILY === 'Windows', 'Symlink privileges vary on Windows');

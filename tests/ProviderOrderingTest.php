@@ -85,3 +85,85 @@ it('handles a long dependency chain without recursive traversal', function (): v
     $expected = array_map(static fn(int $i): string => 'Example\\P' . $i, range(999, 0));
     expect((new ProviderManifest($packages))->collect($requires))->toBe($expected);
 });
+
+it('agrees with an independent reachability oracle for every four-package graph and provider subset', function (): void {
+    $names = ['example/a', 'example/b', 'example/c', 'example/d'];
+    $pairs = [];
+    for ($from = 0; $from < 4; ++$from) {
+        for ($to = 0; $to < 4; ++$to) {
+            if ($from !== $to) {
+                $pairs[] = [$from, $to];
+            }
+        }
+    }
+
+    $sorter = new ProviderPackageSorter();
+    $collector = new \Componenta\ComposerPlugin\ProviderCollector();
+    $checked = 0;
+
+    for ($graph = 0; $graph < (1 << count($pairs)); ++$graph) {
+        $requires = [];
+        $reach = array_fill(0, 4, 0);
+        foreach ($pairs as $index => [$from, $to]) {
+            if (($graph & (1 << $index)) !== 0) {
+                $requires[$names[$from]][] = $names[$to];
+                $reach[$from] |= 1 << $to;
+            }
+        }
+
+        // Independent transitive closure (Floyd-Warshall), including cycles.
+        for ($through = 0; $through < 4; ++$through) {
+            for ($from = 0; $from < 4; ++$from) {
+                if (($reach[$from] & (1 << $through)) !== 0) {
+                    $reach[$from] |= $reach[$through];
+                }
+            }
+        }
+
+        for ($mask = 0; $mask < 16; ++$mask) {
+            $packages = [];
+            for ($index = 0; $index < 4; ++$index) {
+                $packages[] = ($mask & (1 << $index)) !== 0
+                    ? orderingPackage($names[$index], 'Example\\P' . $index)
+                    : new ProviderPackage($names[$index], []);
+            }
+
+            $emitted = 0;
+            $expected = [];
+            while ($emitted !== $mask) {
+                $next = null;
+                for ($index = 0; $index < 4; ++$index) {
+                    $bit = 1 << $index;
+                    if (($mask & $bit) !== 0 && ($emitted & $bit) === 0
+                        && ($reach[$index] & $mask & ~$emitted & ~$bit) === 0) {
+                        $next = $index;
+                        break;
+                    }
+                }
+
+                if ($next === null) {
+                    break;
+                }
+                $emitted |= 1 << $next;
+                $expected[] = 'Example\\P' . $next;
+            }
+
+            try {
+                $actual = $collector->collect($sorter->sort($packages, $requires));
+            } catch (UnexpectedValueException $exception) {
+                if ($emitted === $mask) {
+                    throw new RuntimeException("False cycle in graph $graph, subset $mask.", 0, $exception);
+                }
+                ++$checked;
+                continue;
+            }
+
+            if ($emitted !== $mask || $actual !== $expected) {
+                throw new RuntimeException("Incorrect provider order in graph $graph, subset $mask.");
+            }
+            ++$checked;
+        }
+    }
+
+    expect($checked)->toBe(65536);
+});

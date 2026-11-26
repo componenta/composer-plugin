@@ -9,11 +9,17 @@ use Composer\IO\NullIO;
 use Composer\Package\AliasPackage;
 use Composer\Package\CompletePackage;
 use Composer\Package\Link;
+use Composer\Plugin\CommandEvent;
+use Composer\Plugin\PluginEvents;
 use Composer\Script\Event;
 use Composer\Script\ScriptEvents;
 use Composer\Semver\Constraint\Constraint;
 use Composer\Semver\VersionParser;
 use Composer\Util\Platform;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Input\InputDefinition;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\NullOutput;
 
 function graphPackage(string $name, string $provider, string $version = '1.0.0.0'): CompletePackage
 {
@@ -212,3 +218,40 @@ it('resolves relative provider output from the logical project directory of a sy
         rmdir($metadata);
     }
 })->skip(PHP_OS_FAMILY === 'Windows', 'Symlink privileges vary on Windows');
+
+it('skips only final install events in non-installing command modes and resets on a subsequent command', function (): void {
+    $composer = graphComposer(
+        $this->directory,
+        ['componenta' => ['config-providers-file' => $this->file]],
+        [],
+        ['example/development' => '*'],
+    );
+    $repository = $composer->getRepositoryManager()->getLocalRepository();
+    $repository->addPackage(graphPackage('example/development', 'Example\\Development'));
+    $repository->setDevPackageNames(['example/development']);
+    $io = new NullIO();
+    $plugin = new ComponentaPlugin();
+    $plugin->activate($composer, $io);
+    $plugin->generateProviders(new Event(ScriptEvents::POST_AUTOLOAD_DUMP, $composer, $io, true));
+    expect(require $this->file)->toBe(['Example\\Development']);
+
+    foreach ([
+        ['update', 'no-install', ScriptEvents::POST_UPDATE_CMD],
+        ['install', 'download-only', ScriptEvents::POST_INSTALL_CMD],
+    ] as [$command, $option, $eventName]) {
+        $definition = new InputDefinition([new InputOption($option, null, InputOption::VALUE_NONE)]);
+        $input = new ArrayInput(['--' . $option => true], $definition);
+        $plugin->onCommand(new CommandEvent(PluginEvents::COMMAND, $command, $input, new NullOutput()));
+        $plugin->generateProviders(new Event($eventName, $composer, $io, false));
+        expect(require $this->file)->toBe(['Example\\Development']);
+    }
+
+    $plugin->generateProviders(new Event(ScriptEvents::POST_AUTOLOAD_DUMP, $composer, $io, false));
+    expect(require $this->file)->toBe([]);
+
+    $plugin->onCommand(new CommandEvent(
+        PluginEvents::COMMAND, 'install', new ArrayInput([], new InputDefinition()), new NullOutput(),
+    ));
+    $plugin->generateProviders(new Event(ScriptEvents::POST_INSTALL_CMD, $composer, $io, true));
+    expect(require $this->file)->toBe(['Example\\Development']);
+});
