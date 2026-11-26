@@ -57,7 +57,7 @@ final readonly class ComposerPackageGraph
                 $aliasVersions[$package->getName()][$package->getVersion()] = true;
             }
         }
-        foreach ($this->installedAliases($composer, $packages, $aliasVersions) as $alias) {
+        foreach ($this->additionalAliases($composer, $packages, $aliasVersions) as $alias) {
             $candidates[] = $alias;
         }
         if ($root instanceof AliasPackage) {
@@ -120,19 +120,17 @@ final readonly class ComposerPackageGraph
      * Composer's installed.json retains canonical packages, while its generated
      * installed.php retains the pretty versions of the actual installed aliases.
      * Rehydrate missing aliases without consulting a potentially newer lock file.
+     * Reinstall can rewrite that metadata from canonical packages and lose inline
+     * aliases. Root declarations are a fallback for the installed base version.
      *
      * @param array<string, PackageInterface> $packages
      * @param array<string, array<string, true>> $known
      * @return list<AliasPackage>
      */
-    private function installedAliases(Composer $composer, array $packages, array $known): array
+    private function additionalAliases(Composer $composer, array $packages, array $known): array
     {
         $file = $composer->getConfig()->get('vendor-dir') . '/composer/installed.php';
         $records = new InstalledMetadataReader()->versions($file);
-        if ($records === []) {
-            return [];
-        }
-
         $parser = new VersionParser();
         $aliases = [];
         $rootName = $composer->getPackage()->getName();
@@ -172,6 +170,25 @@ final readonly class ComposerPackageGraph
                 $known[$name][$version] = true;
                 $aliases[] = new AliasPackage($package, $version, $prettyVersion);
             }
+        }
+
+        // A root inline alias describes an alternative version of an already
+        // installed package; it must never introduce another package or version.
+        foreach ($composer->getPackage()->getAliases() as $definition) {
+            $name = $definition['package'];
+            $package = $packages[$name] ?? null;
+            if ($name === $rootName || !($package instanceof BasePackage)
+                || $package->getVersion() !== $definition['version']) {
+                continue;
+            }
+
+            $version = $definition['alias_normalized'];
+            if ($version === $package->getVersion() || isset($known[$name][$version])) {
+                continue;
+            }
+
+            $known[$name][$version] = true;
+            $aliases[] = new AliasPackage($package, $version, $definition['alias']);
         }
 
         return $aliases;

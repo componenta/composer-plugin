@@ -378,3 +378,55 @@ it('rejects executable installed metadata without modifying an existing provider
         rmdir(dirname($vendor));
     }
 });
+
+it('restores root inline aliases after persisted alias metadata is lost during reinstall', function (): void {
+    $composer = graphComposer(
+        $this->directory,
+        ['componenta' => ['config-providers-file' => $this->file]],
+        ['example/z-dependency' => 'dev-main as 2.0.x-dev'],
+    );
+    $feature = graphPackage('example/a-feature', 'Example\\Feature');
+    $feature->setRequires([
+        'example/z-dependency' => graphLink('example/a-feature', 'example/z-dependency', '^2.0@dev'),
+    ]);
+    $dependency = graphPackage('example/z-dependency', 'Example\\Dependency', 'dev-main');
+    $repository = $composer->getRepositoryManager()->getLocalRepository();
+    $repository->addPackage($feature);
+    $repository->addPackage($dependency);
+    $definition = $composer->getPackage()->getAliases()[0];
+    $vendor = $this->directory . '/vendor/composer';
+    mkdir($vendor, 0775, true);
+    $installed = $vendor . '/installed.php';
+
+    try {
+        file_put_contents($installed, '<?php return ' . var_export(['versions' => [
+            'example/z-dependency' => ['version' => 'dev-main', 'reference' => null, 'aliases' => ['2.0.x-dev']],
+        ]], true) . ';');
+        runProviderGraph($composer, true);
+        expect(require $this->file)->toBe(['Example\\Dependency', 'Example\\Feature']);
+
+        // Reinstall writes canonical package records without the inline alias.
+        file_put_contents($installed, '<?php return ' . var_export(['versions' => [
+            'example/z-dependency' => ['version' => 'dev-main', 'reference' => null, 'aliases' => []],
+        ]], true) . ';');
+        runProviderGraph($composer, true);
+        expect(require $this->file)->toBe(['Example\\Dependency', 'Example\\Feature']);
+
+        $composer->getPackage()->setAliases([array_replace($definition, ['version' => 'dev-other'])]);
+        runProviderGraph($composer, true);
+        expect(require $this->file)->toBe(['Example\\Feature', 'Example\\Dependency']);
+
+        $composer->getPackage()->setAliases([array_replace($definition, ['package' => 'example/missing'])]);
+        runProviderGraph($composer, true);
+        expect(require $this->file)->toBe(['Example\\Feature', 'Example\\Dependency']);
+
+        $composer->getPackage()->setAliases([$definition]);
+        $repository->setDevPackageNames(['example/z-dependency']);
+        runProviderGraph($composer, false);
+        expect(require $this->file)->toBe(['Example\\Feature']);
+    } finally {
+        unlink($installed);
+        rmdir($vendor);
+        rmdir(dirname($vendor));
+    }
+});

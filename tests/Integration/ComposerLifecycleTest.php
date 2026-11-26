@@ -257,6 +257,18 @@ it('preserves inline alias provider ordering between install and a separate dump
         expect(require $file)->toBe(['Example\\DependencyProvider', 'Example\\FeatureProvider'])
             ->and(file_get_contents($file))->toBe($contents)
             ->and(filemtime($file))->toBe($mtime);
+
+        lifecycleCommand($composer, $project, $home, ['reinstall', 'example/z-dependency']);
+        clearstatcache(true, $file);
+        expect(require $file)->toBe(['Example\\DependencyProvider', 'Example\\FeatureProvider'])
+            ->and(file_get_contents($file))->toBe($contents)
+            ->and(filemtime($file))->toBe($mtime);
+
+        lifecycleCommand($composer, $project, $home, ['dump-autoload']);
+        clearstatcache(true, $file);
+        expect(require $file)->toBe(['Example\\DependencyProvider', 'Example\\FeatureProvider'])
+            ->and(file_get_contents($file))->toBe($contents)
+            ->and(filemtime($file))->toBe($mtime);
     } finally {
         lifecycleRemoveTree($directory);
     }
