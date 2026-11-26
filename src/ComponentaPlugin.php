@@ -144,12 +144,16 @@ final class ComponentaPlugin implements PluginInterface, EventSubscriberInterfac
     {
         $config = $composer->getConfig();
         $source = $config->getConfigSource()->getName();
-        // Factory uses the global config source when initialized from an array.
-        // For file-backed instances prefer the actual loaded composer.json.
+        // Composer stores a realpath in its file-backed config source, which
+        // can point through a symlink outside the application directory.
+        // Preserve the CLI manifest's logical location when it identifies
+        // the same file. For a different programmatic source, use that source.
+        $composerFile = Factory::getComposerFile();
         $globalConfig = $config->get('home') . '/config.json';
-        $composerFile = $source !== $globalConfig && is_file($source)
-            ? $source
-            : Factory::getComposerFile();
+        if ($source !== $globalConfig && is_file($source)
+            && realpath($composerFile) !== realpath($source)) {
+            $composerFile = $source;
+        }
         $root = realpath(dirname($composerFile));
 
         return $root === false ? dirname($composerFile) : $root;

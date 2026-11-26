@@ -13,6 +13,7 @@ use Composer\Script\Event;
 use Composer\Script\ScriptEvents;
 use Composer\Semver\Constraint\Constraint;
 use Composer\Semver\VersionParser;
+use Composer\Util\Platform;
 
 function graphPackage(string $name, string $provider, string $version = '1.0.0.0'): CompletePackage
 {
@@ -170,3 +171,44 @@ it('resolves self.version requirements rewritten by the dependent package alias'
     runProviderGraph($composer, true);
     expect(require $this->file)->toBe(['Example\\Dependency', 'Example\\Feature']);
 });
+
+it('resolves relative provider output from the logical project directory of a symlinked composer file', function (): void {
+    $metadata = $this->directory . '/metadata';
+    mkdir($metadata);
+    $manifest = $metadata . '/composer.json';
+    file_put_contents($manifest, json_encode([
+        'name' => 'example/application',
+        'config' => ['vendor-dir' => $this->directory . '/vendor'],
+        'extra' => ['componenta' => [
+            'config-providers-file' => 'providers.php',
+            'config-providers' => ['Example\\RootProvider'],
+        ]],
+    ], JSON_THROW_ON_ERROR));
+    $link = $this->directory . '/composer.json';
+    symlink($manifest, $link);
+
+    $cwd = getcwd();
+    $previous = Platform::getEnv('COMPOSER');
+    try {
+        chdir($this->directory);
+        Platform::putEnv('COMPOSER', 'composer.json');
+        $composer = Factory::create(new NullIO(), $link, true, true);
+        runProviderGraph($composer, true);
+        expect(is_file($this->file))->toBeTrue()
+            ->and(is_file($metadata . '/providers.php'))->toBeFalse();
+        expect(require $this->file)->toBe(['Example\\RootProvider']);
+    } finally {
+        chdir($cwd);
+        if ($previous === false) {
+            Platform::clearEnv('COMPOSER');
+        } else {
+            Platform::putEnv('COMPOSER', $previous);
+        }
+        if (is_file($metadata . '/providers.php')) {
+            unlink($metadata . '/providers.php');
+        }
+        unlink($link);
+        unlink($manifest);
+        rmdir($metadata);
+    }
+})->skip(PHP_OS_FAMILY === 'Windows', 'Symlink privileges vary on Windows');

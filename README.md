@@ -52,7 +52,7 @@ Only the root project controls the output file:
 }
 ```
 
-The default is `config/componenta-providers.php`. Relative paths are resolved against the project directory; absolute local paths are supported. An explicitly invalid or null path is rejected. A globally installed plugin does not generate a file in unrelated projects unless the project explicitly configures the path or requires/installs the plugin locally.
+The default is `config/componenta-providers.php`. Relative paths are resolved against the project directory (the logical location of the CLI composer.json, even when it is a symlink); absolute local paths are supported. An explicitly invalid or null path is rejected. A globally installed plugin does not generate a file in unrelated projects unless the project explicitly configures the path or requires/installs the plugin locally.
 
 ## Ordering and generated file
 
