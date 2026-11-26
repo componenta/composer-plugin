@@ -70,9 +70,9 @@ it('orders package providers after the providers of their dependencies', functio
     ]);
 
     expect($providers)->toBe([
+        'Componenta\\Unrelated\\ConfigProvider',
         'Componenta\\CQRS\\ConfigProvider',
         'Componenta\\CQRS\\App\\ConfigProvider',
-        'Componenta\\Unrelated\\ConfigProvider',
         'App\\ConfigProvider',
     ]);
 });
