@@ -52,5 +52,4 @@ final readonly class ProviderExtractor
         /** @var list<class-string> $providers */
         return $providers;
     }
-
 }

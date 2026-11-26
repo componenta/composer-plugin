@@ -56,7 +56,7 @@ final class ComponentaPlugin implements PluginInterface, EventSubscriberInterfac
 
             // Composer passes the autoload/install mode in Script\Event.
             // Manual calls without an event retain the installed-set behavior.
-            $devMode = !$event instanceof Event || $event->isDevMode();
+            $devMode = !($event instanceof Event) || $event->isDevMode();
             $providers = new ComposerPackageGraph()->collect($this->composer, $devMode);
             $target = $this->providerFilePath();
             $written = new ProviderFileWriter()->write($target, $providers);

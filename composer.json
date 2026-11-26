@@ -24,7 +24,8 @@
     "extra": {
         "class": "Componenta\\ComposerPlugin\\ComponentaPlugin",
         "branch-alias": {
-            "dev-main": "1.0.x-dev"
+            "dev-main": "1.0.x-dev",
+            "dev-refactor/provider-generation": "2.0.x-dev"
         }
     },
     "config": {
@@ -32,5 +33,9 @@
             "pestphp/pest-plugin": true
         }
     },
-    "minimum-stability": "stable"
+    "minimum-stability": "stable",
+    "scripts": {
+        "test": "@php vendor/bin/pest",
+        "test:integration": "@php vendor/bin/pest tests/Integration"
+    }
 }

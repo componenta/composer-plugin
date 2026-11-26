@@ -18,6 +18,7 @@ it('rejects invalid provider names at both metadata and rendering boundaries', f
         ->toThrow(UnexpectedValueException::class);
 })->with([
     'self', 'parent', 'static', 'namespace', 'int', 'bad name',
+    'Example\\readonly', 'Example\\return', 'Example\\__CLASS__',
     "Example\\Provider\n", 'Example\\\\Provider', "Example\\Provider\0",
     'Example;echo 1;', '',
 ]);
@@ -44,7 +45,7 @@ it('preserves the first spelling when provider names differ only by ASCII case',
 
 it('renders a context-independent list of strings without autoloading providers', function (): void {
     $file = tempnam(sys_get_temp_dir(), 'componenta-render-');
-    $providers = ['Example\\NotLoaded', 'Example\\Провайдер'];
+    $providers = ['Example\\NotLoaded', 'Example\\Провайдер', 'Example\\Enum', 'Example\\From'];
 
     try {
         file_put_contents($file, (new ProviderFileRenderer())->render($providers));
