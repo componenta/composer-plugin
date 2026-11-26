@@ -38,6 +38,13 @@ final readonly class ComposerPackageGraph
             }
         }
 
+        // Composer serializes installed.json in name order, whereas its in-memory
+        // repository can reflect installation order. Normalize the ordering
+        // input (but keep Composer's original filtering behavior above).
+        unset($packages[$root->getName()]);
+        ksort($packages, SORT_STRING);
+        $packages = [$root->getName() => $root] + $packages;
+
         // Aliases are additional version candidates, not separate provider records.
         $candidates = array_values($packages);
         foreach ($repository->getPackages() as $package) {

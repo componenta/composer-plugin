@@ -84,7 +84,7 @@ it('orders compatible replacers and virtual providers before dependent packages'
     }
 
     runProviderGraph($composer, true);
-    expect(require $this->file)->toBe(['Example\\Provider', 'Example\\Replacer', 'Example\\Feature', 'Example\\Incompatible']);
+    expect(require $this->file)->toBe(['Example\\Incompatible', 'Example\\Provider', 'Example\\Replacer', 'Example\\Feature']);
 });
 
 it('resolves dependency constraints against Composer version aliases', function (): void {
@@ -114,13 +114,13 @@ it('switches the manifest between dev and no-dev autoload modes', function (): v
     $repository->setDevPackageNames(['example/development']);
 
     runProviderGraph($composer, true);
-    expect(require $this->file)->toBe(['Example\\Runtime', 'Example\\Development', 'Example\\Root']);
+    expect(require $this->file)->toBe(['Example\\Development', 'Example\\Runtime', 'Example\\Root']);
 
     runProviderGraph($composer, false);
     expect(require $this->file)->toBe(['Example\\Runtime', 'Example\\Root']);
 
     runProviderGraph($composer, true);
-    expect(require $this->file)->toBe(['Example\\Runtime', 'Example\\Development', 'Example\\Root']);
+    expect(require $this->file)->toBe(['Example\\Development', 'Example\\Runtime', 'Example\\Root']);
 });
 
 it('uses the Composer legacy reachability fallback for missing dev package metadata', function (): void {
@@ -254,4 +254,33 @@ it('skips only final install events in non-installing command modes and resets o
     ));
     $plugin->generateProviders(new Event(ScriptEvents::POST_INSTALL_CMD, $composer, $io, true));
     expect(require $this->file)->toBe(['Example\\Development']);
+});
+
+it('keeps the manifest identical when Composer changes repository iteration order', function (): void {
+    $extra = ['componenta' => ['config-providers-file' => $this->file]];
+    $first = graphComposer($this->directory, $extra);
+    $second = graphComposer($this->directory, $extra);
+    $a = graphPackage('example/a', 'Example\\A');
+    $b = graphPackage('example/b', 'Example\\B');
+    $feature = graphPackage('example/feature', 'Example\\Feature');
+    $feature->setRequires(['example/b' => graphLink('example/feature', 'example/b', '*')]);
+
+    foreach ([$feature, $b, $a] as $package) {
+        $first->getRepositoryManager()->getLocalRepository()->addPackage(clone $package);
+    }
+    foreach ([$a, $b, $feature] as $package) {
+        $second->getRepositoryManager()->getLocalRepository()->addPackage(clone $package);
+    }
+
+    runProviderGraph($first, true);
+    expect(require $this->file)->toBe(['Example\\A', 'Example\\B', 'Example\\Feature']);
+    $contents = file_get_contents($this->file);
+    touch($this->file, time() - 100);
+    clearstatcache(true, $this->file);
+    $mtime = filemtime($this->file);
+
+    runProviderGraph($second, true);
+    clearstatcache(true, $this->file);
+    expect(file_get_contents($this->file))->toBe($contents)
+        ->and(filemtime($this->file))->toBe($mtime);
 });

@@ -148,6 +148,16 @@ it('generates manifests across real Composer installation, upgrade from v1.0.3, 
         expect($actual)->toBe($both);
         $checkAutoload(true);
 
+        // A second process with the same dependencies must not change ordering or bytes.
+        $stableContents = file_get_contents($file);
+        touch($file, time() - 100);
+        clearstatcache(true, $file);
+        $stableMtime = filemtime($file);
+        lifecycleCommand($composer, $project, $home, ['dump-autoload', '--dev']);
+        clearstatcache(true, $file);
+        expect(file_get_contents($file))->toBe($stableContents)
+            ->and(filemtime($file))->toBe($stableMtime);
+
         // Non-installing commands must not change a dev manifest even with --no-dev.
         touch($file, time() - 100);
         clearstatcache(true, $file);
