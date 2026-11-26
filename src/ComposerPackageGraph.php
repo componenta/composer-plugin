@@ -6,9 +6,11 @@ namespace Componenta\ComposerPlugin;
 
 use Composer\Composer;
 use Composer\Package\AliasPackage;
+use Composer\Package\BasePackage;
 use Composer\Package\PackageInterface;
 use Composer\Semver\Constraint\Constraint;
 use Composer\Semver\Constraint\ConstraintInterface;
+use Composer\Semver\VersionParser;
 use UnexpectedValueException;
 
 /** @internal */
@@ -47,10 +49,15 @@ final readonly class ComposerPackageGraph
 
         // Aliases are additional version candidates, not separate provider records.
         $candidates = array_values($packages);
+        $aliasVersions = [];
         foreach ($repository->getPackages() as $package) {
             if ($package instanceof AliasPackage && isset($packages[$package->getName()])) {
                 $candidates[] = $package;
+                $aliasVersions[$package->getName()][$package->getVersion()] = true;
             }
+        }
+        foreach ($this->installedAliases($composer, $packages, $aliasVersions) as $alias) {
+            $candidates[] = $alias;
         }
         if ($root instanceof AliasPackage) {
             $candidates[] = $root->getAliasOf();
@@ -100,6 +107,65 @@ final readonly class ComposerPackageGraph
         }
 
         return new ProviderManifest($metadata)->collect($requires);
+    }
+
+    /**
+     * Composer's installed.json retains canonical packages, while its generated
+     * installed.php retains the pretty versions of the actual installed aliases.
+     * Rehydrate missing aliases without consulting a potentially newer lock file.
+     *
+     * @param array<string, PackageInterface> $packages
+     * @param array<string, array<string, true>> $known
+     * @return list<AliasPackage>
+     */
+    private function installedAliases(Composer $composer, array $packages, array $known): array
+    {
+        $file = $composer->getConfig()->get('vendor-dir') . '/composer/installed.php';
+        if (!is_file($file)) {
+            return [];
+        }
+
+        // This is Composer's own generated runtime metadata, not a package provider.
+        $data = (static fn(string $path): mixed => require $path)($file);
+        if (!is_array($data) || !is_array($data['versions'] ?? null)) {
+            throw new UnexpectedValueException('Invalid Composer installed.php metadata.');
+        }
+
+        $parser = new VersionParser();
+        $aliases = [];
+        $rootName = $composer->getPackage()->getName();
+        foreach ($packages as $name => $package) {
+            if ($name === $rootName || !$package instanceof BasePackage) {
+                continue;
+            }
+
+            $record = $data['versions'][$name] ?? null;
+            if (!is_array($record) || ($record['version'] ?? null) !== $package->getVersion()) {
+                continue;
+            }
+
+            $source = $package->getInstallationSource();
+            $reference = $source === 'source' ? $package->getSourceReference() : $package->getDistReference();
+            $reference ??= ($package->getSourceReference() ?: $package->getDistReference()) ?: null;
+            if (($record['reference'] ?? null) !== $reference) {
+                continue;
+            }
+
+            foreach ($record['aliases'] ?? [] as $prettyVersion) {
+                if (!is_string($prettyVersion)) {
+                    throw new UnexpectedValueException(sprintf('Invalid Composer alias for "%s".', $name));
+                }
+                $version = $parser->normalize($prettyVersion);
+                if ($version === $package->getVersion() || isset($known[$name][$version])) {
+                    continue;
+                }
+
+                $known[$name][$version] = true;
+                $aliases[] = new AliasPackage($package, $version, $prettyVersion);
+            }
+        }
+
+        return $aliases;
     }
 
     /**

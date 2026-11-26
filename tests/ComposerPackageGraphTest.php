@@ -284,3 +284,41 @@ it('keeps the manifest identical when Composer changes repository iteration orde
     expect(file_get_contents($this->file))->toBe($contents)
         ->and(filemtime($this->file))->toBe($mtime);
 });
+
+it('restores persisted inline aliases without adding absent or differently versioned packages', function (): void {
+    $composer = graphComposer($this->directory, ['componenta' => ['config-providers-file' => $this->file]]);
+    $feature = graphPackage('example/a-feature', 'Example\\Feature');
+    $feature->setRequires(['example/z-dependency' => graphLink('example/a-feature', 'example/z-dependency', '^2.0@dev')]);
+    $dependency = graphPackage('example/z-dependency', 'Example\\Dependency', 'dev-main');
+    $repository = $composer->getRepositoryManager()->getLocalRepository();
+    $repository->addPackage($feature);
+    $repository->addPackage($dependency);
+    $vendor = $this->directory . '/vendor/composer';
+    mkdir($vendor, 0775, true);
+    $installed = $vendor . '/installed.php';
+
+    try {
+        file_put_contents($installed, '<?php return ' . var_export(['versions' => [
+            'example/z-dependency' => ['version' => 'dev-other', 'reference' => null, 'aliases' => ['2.0.x-dev']],
+            'example/absent' => ['version' => 'dev-main', 'reference' => null, 'aliases' => ['2.0.x-dev']],
+        ]], true) . ';');
+        runProviderGraph($composer, true);
+        expect(require $this->file)->toBe(['Example\\Feature', 'Example\\Dependency']);
+
+        file_put_contents($installed, '<?php return ' . var_export(['versions' => [
+            'example/z-dependency' => ['version' => 'dev-main', 'reference' => 'stale', 'aliases' => ['2.0.x-dev']],
+        ]], true) . ';');
+        runProviderGraph($composer, true);
+        expect(require $this->file)->toBe(['Example\\Feature', 'Example\\Dependency']);
+
+        file_put_contents($installed, '<?php return ' . var_export(['versions' => [
+            'example/z-dependency' => ['version' => 'dev-main', 'reference' => null, 'aliases' => ['2.0.x-dev']],
+        ]], true) . ';');
+        runProviderGraph($composer, true);
+        expect(require $this->file)->toBe(['Example\\Dependency', 'Example\\Feature']);
+    } finally {
+        unlink($installed);
+        rmdir($vendor);
+        rmdir(dirname($vendor));
+    }
+});
