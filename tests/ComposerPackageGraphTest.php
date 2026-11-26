@@ -322,3 +322,32 @@ it('restores persisted inline aliases without adding absent or differently versi
         rmdir(dirname($vendor));
     }
 });
+
+it('does not invent circular provider dependencies from native platform requirements', function (): void {
+    $composer = graphComposer($this->directory, ['componenta' => ['config-providers-file' => $this->file]]);
+    $core = graphPackage('example/core', 'Example\\Core');
+    $core->setRequires(['ext-json' => graphLink('example/core', 'ext-json', '*')]);
+    $polyfill = graphPackage('example/polyfill', 'Example\\Polyfill');
+    $polyfill->setProvides(['ext-json' => graphLink('example/polyfill', 'ext-json', '*', 'provides')]);
+    $polyfill->setRequires(['example/core' => graphLink('example/polyfill', 'example/core', '*')]);
+    $repository = $composer->getRepositoryManager()->getLocalRepository();
+    $repository->addPackage($polyfill);
+    $repository->addPackage($core);
+
+    runProviderGraph($composer, true);
+    expect(require $this->file)->toBe(['Example\\Core', 'Example\\Polyfill']);
+});
+
+it('still orders an explicitly required polyfill package before its dependant', function (): void {
+    $composer = graphComposer($this->directory, ['componenta' => ['config-providers-file' => $this->file]]);
+    $feature = graphPackage('example/a-feature', 'Example\\Feature');
+    $feature->setRequires(['example/z-polyfill' => graphLink('example/a-feature', 'example/z-polyfill', '*')]);
+    $polyfill = graphPackage('example/z-polyfill', 'Example\\Polyfill');
+    $polyfill->setProvides(['ext-json' => graphLink('example/z-polyfill', 'ext-json', '*', 'provides')]);
+    $repository = $composer->getRepositoryManager()->getLocalRepository();
+    $repository->addPackage($feature);
+    $repository->addPackage($polyfill);
+
+    runProviderGraph($composer, true);
+    expect(require $this->file)->toBe(['Example\\Polyfill', 'Example\\Feature']);
+});

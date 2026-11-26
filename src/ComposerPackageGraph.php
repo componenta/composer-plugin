@@ -8,6 +8,7 @@ use Composer\Composer;
 use Composer\Package\AliasPackage;
 use Composer\Package\BasePackage;
 use Composer\Package\PackageInterface;
+use Composer\Repository\PlatformRepository;
 use Composer\Semver\Constraint\Constraint;
 use Composer\Semver\Constraint\ConstraintInterface;
 use Composer\Semver\VersionParser;
@@ -89,6 +90,12 @@ final readonly class ComposerPackageGraph
             $metadata[] = new ProviderPackage($name, $package->getExtra());
             $dependencies = [];
             foreach ($requirements[$name] ?? [] as $target => $constraints) {
+                // Platform requirements are not dependencies on a package's
+                // configuration providers, even when a polyfill advertises them.
+                if (PlatformRepository::isPlatformPackage($target)) {
+                    continue;
+                }
+
                 $matches = $this->matchingPackages($constraints, $direct[$target] ?? []);
                 if ($matches === []) {
                     $matches = $this->matchingPackages($constraints, $virtual[$target] ?? []);
