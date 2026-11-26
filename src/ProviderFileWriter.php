@@ -13,38 +13,75 @@ final readonly class ProviderFileWriter
      */
     public function write(string $file, array $providers): bool
     {
-        $directory = dirname($file);
-
-        if (!is_dir($directory) && !mkdir($directory, 0775, true) && !is_dir($directory)) {
-            throw new RuntimeException(sprintf('Unable to create directory "%s".', $directory));
+        if ($file === '' || str_contains($file, "\0") || preg_match('~\A[a-z][a-z0-9+.-]*://~i', $file) === 1) {
+            throw new RuntimeException('Provider file must be a local filesystem path.');
         }
 
         $contents = (new ProviderFileRenderer())->render($providers);
-
-        if (is_file($file) && file_get_contents($file) === $contents) {
-            return false;
+        $directory = dirname($file);
+        if (!is_dir($directory) && !@mkdir($directory, 0775, true) && !is_dir($directory)) {
+            throw new RuntimeException(sprintf('Unable to create directory "%s".', $directory));
         }
 
-        $tmp = tempnam($directory, basename($file) . '.');
+        clearstatcache(true, $file);
+        if (is_link($file) || (file_exists($file) && !is_file($file))) {
+            throw new RuntimeException(sprintf('Provider file "%s" must be a regular file, not a link or directory.', $file));
+        }
 
+        $mode = 0666 & ~umask();
+        if (is_file($file)) {
+            $previous = @file_get_contents($file);
+            if ($previous === false) {
+                throw new RuntimeException(sprintf('Unable to read provider file "%s".', $file));
+            }
+
+            if ($previous === $contents) {
+                return false;
+            }
+
+            $permissions = @fileperms($file);
+            if ($permissions === false) {
+                throw new RuntimeException(sprintf('Unable to read permissions of "%s".', $file));
+            }
+
+            $mode = $permissions & 0777;
+        }
+
+        $directory = realpath($directory);
+        if ($directory === false) {
+            throw new RuntimeException(sprintf('Unable to resolve directory for "%s".', $file));
+        }
+        $tmp = @tempnam($directory, '.componenta-providers-');
         if ($tmp === false) {
             throw new RuntimeException(sprintf('Unable to create temporary file for "%s".', $file));
         }
 
-        if (file_put_contents($tmp, $contents, LOCK_EX) === false) {
-            @unlink($tmp);
+        try {
+            // tempnam() may fall back to the system temporary directory.
+            if (realpath(dirname($tmp)) !== $directory) {
+                throw new RuntimeException(sprintf('Temporary file for "%s" is outside the destination directory.', $file));
+            }
 
-            throw new RuntimeException(sprintf('Unable to write temporary file for "%s".', $file));
+            if (@file_put_contents($tmp, $contents, LOCK_EX) !== strlen($contents)) {
+                throw new RuntimeException(sprintf('Unable to write complete temporary file for "%s".', $file));
+            }
+
+            if (!@chmod($tmp, $mode)) {
+                throw new RuntimeException(sprintf('Unable to set permissions for "%s".', $file));
+            }
+
+            if (!@rename($tmp, $file)) {
+                throw new RuntimeException(sprintf('Unable to replace "%s".', $file));
+            }
+        } finally {
+            if (is_file($tmp)) {
+                @unlink($tmp);
+            }
         }
 
-        if (!rename($tmp, $file)) {
-            @unlink($tmp);
-
-            throw new RuntimeException(sprintf('Unable to write "%s".', $file));
-        }
-
+        clearstatcache(true, $file);
         if (function_exists('opcache_invalidate')) {
-            opcache_invalidate($file, true);
+            @opcache_invalidate($file, true);
         }
 
         return true;
