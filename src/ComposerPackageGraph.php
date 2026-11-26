@@ -6,7 +6,6 @@ namespace Componenta\ComposerPlugin;
 
 use Composer\Composer;
 use Composer\Package\AliasPackage;
-use Composer\Package\Link;
 use Composer\Package\PackageInterface;
 use Composer\Semver\Constraint\Constraint;
 use Composer\Semver\Constraint\ConstraintInterface;
@@ -52,9 +51,19 @@ final readonly class ComposerPackageGraph
 
         $direct = [];
         $virtual = [];
+        $requirements = [];
         foreach ($candidates as $package) {
             $name = $package->getName();
             $direct[$name][$name][] = new Constraint('==', $package->getVersion());
+            $links = array_values($package->getRequires());
+            if ($name === $root->getName() && $devMode) {
+                $links = [...$links, ...array_values($package->getDevRequires())];
+            }
+            foreach ($links as $link) {
+                // The canonical record and its aliases can express different
+                // self.version constraints for the same requirement.
+                $requirements[$name][$link->getTarget()][] = $link->getConstraint();
+            }
             foreach ([...array_values($package->getProvides()), ...array_values($package->getReplaces())] as $link) {
                 $virtual[$link->getTarget()][$name][] = $link->getConstraint();
             }
@@ -64,17 +73,11 @@ final readonly class ComposerPackageGraph
         $metadata = [];
         foreach ($packages as $name => $package) {
             $metadata[] = new ProviderPackage($name, $package->getExtra());
-            $links = array_values($package->getRequires());
-            if ($package === $root && $devMode) {
-                $links = [...$links, ...array_values($root->getDevRequires())];
-            }
-
             $dependencies = [];
-            foreach ($links as $link) {
-                $target = $link->getTarget();
-                $matches = $this->matchingPackages($link, $direct[$target] ?? []);
+            foreach ($requirements[$name] ?? [] as $target => $constraints) {
+                $matches = $this->matchingPackages($constraints, $direct[$target] ?? []);
                 if ($matches === []) {
-                    $matches = $this->matchingPackages($link, $virtual[$target] ?? []);
+                    $matches = $this->matchingPackages($constraints, $virtual[$target] ?? []);
                 }
 
                 // A package satisfying its own virtual requirement needs no edge.
@@ -93,17 +96,20 @@ final readonly class ComposerPackageGraph
     }
 
     /**
+     * @param list<ConstraintInterface> $required
      * @param array<string, list<ConstraintInterface>> $candidates
      * @return list<string>
      */
-    private function matchingPackages(Link $link, array $candidates): array
+    private function matchingPackages(array $required, array $candidates): array
     {
         $matches = [];
         foreach ($candidates as $name => $constraints) {
             foreach ($constraints as $constraint) {
-                if ($link->getConstraint()->matches($constraint)) {
-                    $matches[] = $name;
-                    break;
+                foreach ($required as $requirement) {
+                    if ($requirement->matches($constraint)) {
+                        $matches[] = $name;
+                        continue 3;
+                    }
                 }
             }
         }

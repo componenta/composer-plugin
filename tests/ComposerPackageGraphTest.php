@@ -11,6 +11,7 @@ use Composer\Package\CompletePackage;
 use Composer\Package\Link;
 use Composer\Script\Event;
 use Composer\Script\ScriptEvents;
+use Composer\Semver\Constraint\Constraint;
 use Composer\Semver\VersionParser;
 
 function graphPackage(string $name, string $provider, string $version = '1.0.0.0'): CompletePackage
@@ -152,4 +153,20 @@ it('rejects an explicitly null output path without creating a file', function ()
     $composer = graphComposer($this->directory, ['componenta' => ['config-providers-file' => null]]);
     expect(fn() => runProviderGraph($composer, true))->toThrow(UnexpectedValueException::class);
     expect(file_exists($this->file))->toBeFalse();
+});
+
+it('resolves self.version requirements rewritten by the dependent package alias', function (): void {
+    $composer = graphComposer($this->directory, ['componenta' => ['config-providers-file' => $this->file]]);
+    $feature = graphPackage('example/feature', 'Example\\Feature', 'dev-main');
+    $feature->setRequires(['example/dependency' => new Link(
+        'example/feature', 'example/dependency', new Constraint('==', 'dev-main'), 'requires', 'self.version',
+    )]);
+    $dependency = graphPackage('example/dependency', 'Example\\Dependency', '2.0.9999999.9999999-dev');
+    $repository = $composer->getRepositoryManager()->getLocalRepository();
+    $repository->addPackage($feature);
+    $repository->addPackage(new AliasPackage($feature, '2.0.9999999.9999999-dev', '2.0.x-dev'));
+    $repository->addPackage($dependency);
+
+    runProviderGraph($composer, true);
+    expect(require $this->file)->toBe(['Example\\Dependency', 'Example\\Feature']);
 });
