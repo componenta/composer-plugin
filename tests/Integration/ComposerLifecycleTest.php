@@ -57,7 +57,7 @@ function lifecycleCommand(string $composer, string $directory, string $home, arr
 
 it('generates manifests across real Composer installation, upgrade from v1.0.3, dump-autoload and no-dev installation', function (): void {
     $repository = dirname(__DIR__, 2);
-    $composer = $repository . '/vendor/bin/composer';
+    $composer = $repository . '/tests/Fixtures/composer-cli.php';
     $directory = sys_get_temp_dir() . '/componenta-lifecycle-' . bin2hex(random_bytes(8));
     $project = $directory . '/project';
     $home = $directory . '/home';
@@ -194,7 +194,7 @@ it('generates manifests across real Composer installation, upgrade from v1.0.3, 
 
 it('preserves inline alias provider ordering between install and a separate dump-autoload command', function (): void {
     $repository = dirname(__DIR__, 2);
-    $composer = $repository . '/vendor/bin/composer';
+    $composer = $repository . '/tests/Fixtures/composer-cli.php';
     $directory = sys_get_temp_dir() . '/componenta-inline-alias-' . bin2hex(random_bytes(8));
     $project = $directory . '/project';
     $home = $directory . '/home';
