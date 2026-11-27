@@ -94,6 +94,10 @@ it('rejects malformed and ambiguous metadata arrays', function (string $source):
     expect(fn() => (new InstalledMetadataReader())->versions($this->file))->toThrow(UnexpectedValueException::class);
 })->with([
     "<?php return array('versions' => null);",
+    "<?php return ['versions' => ['example/package' => false]];",
+    "<?php return ['versions' => [['version' => '1.0.0.0']]];",
+    "<?php return ['versions' => ['' => []]];",
+    "<?php return ['versions' => ['example/package' => [" . PHP_INT_MAX . " => 1, 2]]];",
     "<?php return array('versions' => array(), 'versions' => array());",
     "<?php return array('versions' => array()); ?>text",
     "<?php return array('versions' => array('x' => 'unterminated));",
@@ -108,3 +112,32 @@ it('roundtrips every byte through Composer-style exported string literals', func
         expect($reader->versions($this->file))->toBe($records);
     }
 });
+
+it('distinguishes a missing metadata file from an existing directory', function (): void {
+    $reader = new InstalledMetadataReader();
+    expect($reader->versions($this->file))->toBe([]);
+
+    mkdir($this->file);
+    try {
+        expect(fn() => $reader->versions($this->file))->toThrow(UnexpectedValueException::class);
+    } finally {
+        rmdir($this->file);
+    }
+});
+
+it('rejects a dangling metadata symlink while allowing a valid file symlink', function (): void {
+    $reader = new InstalledMetadataReader();
+    $target = $this->directory . '/target.php';
+    symlink($target, $this->file);
+
+    try {
+        expect(fn() => $reader->versions($this->file))->toThrow(UnexpectedValueException::class);
+        file_put_contents($target, "<?php return ['versions' => ['example/package' => ['aliases' => []]]];");
+        expect($reader->versions($this->file))->toBe(['example/package' => ['aliases' => []]]);
+    } finally {
+        unlink($this->file);
+        if (is_file($target)) {
+            unlink($target);
+        }
+    }
+})->skip(PHP_OS_FAMILY === 'Windows', 'Symlink privileges vary on Windows');

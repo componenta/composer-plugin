@@ -14,6 +14,10 @@ final readonly class InstalledMetadataReader
     public function versions(string $file): array
     {
         if (!is_file($file)) {
+            if (file_exists($file) || is_link($file)) {
+                throw new UnexpectedValueException(sprintf('Composer metadata "%s" must be a regular file.', $file));
+            }
+
             return [];
         }
 
@@ -34,6 +38,12 @@ final readonly class InstalledMetadataReader
             $this->expect($tokens, $offset, ord(';'));
             if ($offset !== count($tokens) || !is_array($data) || !is_array($data['versions'] ?? null)) {
                 throw new UnexpectedValueException('Expected a single returned array containing versions.');
+            }
+
+            foreach ($data['versions'] as $name => $record) {
+                if (!is_string($name) || $name === '' || !is_array($record)) {
+                    throw new UnexpectedValueException('Expected a map of package names to metadata records.');
+                }
             }
 
             return $data['versions'];
@@ -69,6 +79,9 @@ final readonly class InstalledMetadataReader
                     }
                     $result[$item] = $this->value($tokens, $offset, $directory, $depth + 1);
                 } else {
+                    if (array_key_exists(PHP_INT_MAX, $result)) {
+                        throw new UnexpectedValueException('Metadata array index overflow.');
+                    }
                     $result[] = $item;
                 }
                 if (!$this->accept($tokens, $offset, ord(','))) {
