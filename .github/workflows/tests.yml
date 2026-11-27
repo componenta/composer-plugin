@@ -36,3 +36,34 @@ jobs:
         run: composer install --no-interaction --prefer-dist --no-progress
       - name: Test
         run: composer test
+
+  publish-v2:
+    name: Publish v2.0.0
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.head_commit.message == 'Release v2.0.0'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish tested release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES: |
+            ## Changed
+
+            - Generate safe, validated PHP provider manifests using string literals.
+            - Resolve installed dependency order deterministically, including transitive dependencies, virtual packages, replacements and version aliases.
+            - Honor Composer development mode and installation lifecycle; avoid rewriting manifests on lock-only or download-only commands.
+            - Parse installed metadata as literal data without executing PHP.
+            - Preserve permissions and replace provider manifests atomically; avoid rewriting unchanged files.
+            - Add regression and integration coverage for installation, upgrades, autoload modes and reinstallation.
+
+            ## Compatibility
+
+            Version 2 changes ordering of independent providers and tightens metadata and file-writing contracts. The generated PHP file still returns an ordered list of class names. PHP 8.4 or later (within PHP 8.x), ext-tokenizer, and Composer Plugin API ^2.6 are required.
+
+            ## Verification
+
+            Full Pest and real Composer integration tests pass on PHP 8.4 and 8.5.
+        run: |
+          gh release create v2.0.0 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "v2.0.0" --notes "$RELEASE_NOTES" --latest
