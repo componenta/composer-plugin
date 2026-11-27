@@ -51,6 +51,10 @@ final readonly class ProviderFileWriter
         if ($directory === false) {
             throw new RuntimeException(sprintf('Unable to resolve directory for "%s".', $file));
         }
+        if (!is_writable($directory)) {
+            throw new RuntimeException(sprintf('Unable to write to directory "%s".', $directory));
+        }
+
         $tmp = @tempnam($directory, '.componenta-providers-');
         if ($tmp === false) {
             throw new RuntimeException(sprintf('Unable to create temporary file for "%s".', $file));

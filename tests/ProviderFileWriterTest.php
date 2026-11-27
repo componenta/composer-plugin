@@ -91,7 +91,7 @@ it('preserves the previous file when its directory cannot accept a temporary fil
             $this->markTestSkipped('The effective user can write despite the directory permissions.');
         }
         expect(fn() => (new ProviderFileWriter())->write($file, ['Example\\Provider']))
-            ->toThrow(RuntimeException::class);
+            ->toThrow(RuntimeException::class, 'Unable to write to directory');
         expect(file_get_contents($file))->toBe('original')
             ->and(scandir($this->directory))->toBe(['.', '..', 'providers.php']);
     } finally {
